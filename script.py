@@ -101,7 +101,10 @@ def authenticate():
     password = os.environ.get("TAQTICS_PASSWORD")
     if not email or not password:
         raise RuntimeError(
-            "TAQTICS_EMAIL and TAQTICS_PASSWORD must be set (e.g. via .env)"
+            "TAQTICS_EMAIL and TAQTICS_PASSWORD must be set (e.g. via .env). "
+            "NOTE: the copy of this script uploaded to the Taqtics Custom "
+            "Reports portal has these hardcoded, since that platform does "
+            "not support supplying a separate .env file."
         )
     resp = requests.post(
         f"{BASE_URL}/api/v1/internal/auth/login",
@@ -749,7 +752,7 @@ let assigneePage  = 1;
 let detailSearch  = '';
 let summarySearch = '';
 let tatGroupBy       = 'brand';
-let tatView          = 'response';
+let tatView          = 'completion';
 let trendBarMode     = 'stack';
 let recurringGroupBy = 'category';
 let costGroupBy      = 'category';
@@ -1148,8 +1151,6 @@ function renderCategoryChart(rows) {
 
 function renderTATChart(rows) {
     const TAT_META = {
-        response:   { field: 'resp', label: 'Response TAT',   color: '#3b82f6',
-                      tip: 'Time from ticket creation until it was claimed/assigned (hours). Shows how fast the team picks up issues.' },
         completion: { field: 'comp', label: 'Completion TAT', color: '#10b981',
                       tip: 'Time from creation to completion, excluding on-hold pauses (hours). Actual working time to resolve.' },
         closure:    { field: 'clos', label: 'Closure TAT',    color: '#475569',
@@ -1163,7 +1164,7 @@ function renderTATChart(rows) {
         if (r.completion_tat_hr !== null) groups[key].comp.push(r.completion_tat_hr);
         if (r.closure_tat_hr    !== null) groups[key].clos.push(r.closure_tat_hr);
     });
-    const m    = TAT_META[tatView] || TAT_META.response;
+    const m    = TAT_META[tatView] || TAT_META.completion;
     const keys = Object.keys(groups).sort((a, b) => avg(groups[a][m.field]) - avg(groups[b][m.field]));
     const trace = {
         name: m.label, type: 'bar', orientation: 'h',
@@ -1614,8 +1615,6 @@ function renderCostChart(rows) {
 // ── User Performance ──────────────────────────────────────────────────────────
 const USER_BAR_META = {
     tickets:  { label: 'No. of Tickets',       color: '#C62828', yTitle: 'Tickets' },
-    avg_resp: { label: 'Avg Response TAT (Hr)', color: '#3b82f6', yTitle: 'Hours',
-                tip: TAT_TIPS.response_tat_hr },
     avg_comp: { label: 'Avg Completion TAT (Hr)', color: '#10b981', yTitle: 'Hours',
                 tip: TAT_TIPS.completion_tat_hr },
     esc_rate: { label: 'Escalation Rate (%)',   color: '#f97316', yTitle: 'Percent (%)' },
@@ -2131,12 +2130,11 @@ def build_html(table_json, meta_json, generated_at, total_records, date_range):
       <div class="panel-hdr" style="flex-wrap:wrap;gap:8px">
         <span style="display:flex;align-items:center">
           Average TAT (Hours)
-          <button class="info-btn" id="tat-info-btn" data-tip="Time from ticket creation until claimed (hours).">i</button>
+          <button class="info-btn" id="tat-info-btn" data-tip="Time from creation to completion, excluding on-hold pauses (hours). Actual working time to resolve.">i</button>
         </span>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
           <div class="tat-options">
-            <label><input type="radio" name="tat-view" value="response" checked> Response</label>
-            <label><input type="radio" name="tat-view" value="completion"> Completion</label>
+            <label><input type="radio" name="tat-view" value="completion" checked> Completion</label>
             <label><input type="radio" name="tat-view" value="closure"> Closure</label>
           </div>
           <div class="toggle-grp">
@@ -2215,11 +2213,10 @@ def build_html(table_json, meta_json, generated_at, total_records, date_range):
       <div class="panel-hdr" style="flex-wrap:wrap;gap:8px">
         <span style="display:flex;align-items:center">
           User Performance
-          <button class="info-btn" id="user-bar-info-btn" data-tip="Shows top 20 users by selected metric. Switch the radio to compare ticket volume, response speed, completion speed, escalation rate, or reopen rate.">i</button>
+          <button class="info-btn" id="user-bar-info-btn" data-tip="Shows top 20 users by selected metric. Switch the radio to compare ticket volume, completion speed, escalation rate, or reopen rate.">i</button>
         </span>
         <div class="tat-options">
           <label><input type="radio" name="user-bar-metric" value="tickets" checked> No. of Tickets</label>
-          <label><input type="radio" name="user-bar-metric" value="avg_resp"> Avg Resp TAT</label>
           <label><input type="radio" name="user-bar-metric" value="avg_comp"> Avg Comp TAT</label>
           <label><input type="radio" name="user-bar-metric" value="esc_rate"> Escalation Rate</label>
           <label><input type="radio" name="user-bar-metric" value="reopen_rate"> Reopen Rate</label>
