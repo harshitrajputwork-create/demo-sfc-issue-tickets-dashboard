@@ -941,7 +941,7 @@ function renderKpis(stats) {
         },
         {
             label: 'SLA Compliance', value: stats.slaPct.toFixed(1) + '%', accent: '#8b5cf6',
-            sub: `Avg Resp: ${fmtHr(stats.avgResp)} hr | Avg Comp: ${fmtHr(stats.avgComp)} hr`
+            sub: `Avg Comp: ${fmtHr(stats.avgComp)} hr`
         },
         {
             label: 'Escalated', value: stats.escalated, accent: '#f97316',
@@ -1358,7 +1358,7 @@ function getSummaryRows(rows) {
             groups[key] = {
                 store: r.store, brand: r.brand, total: 0,
                 open: 0, inProg: 0, completed: 0, closed: 0, rejected: 0, onHold: 0,
-                overdue: 0, escalated: 0, respTATs: []
+                overdue: 0, escalated: 0, compTATs: []
             };
         }
         const g = groups[key];
@@ -1371,11 +1371,11 @@ function getSummaryRows(rows) {
         if (r.status === 'On Hold')     g.onHold++;
         if (r.is_overdue)               g.overdue++;
         if (r.escalated === 'Yes')      g.escalated++;
-        if (r.response_tat_hr !== null) g.respTATs.push(r.response_tat_hr);
+        if (r.completion_tat_hr !== null) g.compTATs.push(r.completion_tat_hr);
     });
     return Object.values(groups).map(g => ({
         ...g,
-        avg_resp_tat: g.respTATs.length ? avg(g.respTATs) : null,
+        avg_comp_tat: g.compTATs.length ? avg(g.compTATs) : null,
     }));
 }
 
@@ -1404,7 +1404,7 @@ function renderSummaryTable(rows) {
         { key: 'closed',       label: 'Closed' },
         { key: 'overdue',      label: 'Overdue' },
         { key: 'escalated',    label: 'Escalated' },
-        { key: 'avg_resp_tat', label: 'Avg Resp TAT (Hr)', tip: TAT_TIPS.response_tat_hr },
+        { key: 'avg_comp_tat', label: 'Avg Comp TAT (Hr)', tip: TAT_TIPS.completion_tat_hr },
     ];
 
     const thead = '<tr>' + COLS.map(c => {
@@ -1431,7 +1431,7 @@ function renderSummaryTable(rows) {
             ${numCell(r.closed,    'closed')}
             ${numCell(r.overdue,   'overdue')}
             ${numCell(r.escalated, 'escalated')}
-            <td class="num">${r.avg_resp_tat !== null ? r.avg_resp_tat.toFixed(1) : '—'}</td>
+            <td class="num">${r.avg_comp_tat !== null ? r.avg_comp_tat.toFixed(1) : '—'}</td>
         </tr>`).join('')
         : '<tr><td colspan="11" class="empty-state">No data for current filters</td></tr>';
 
@@ -1491,7 +1491,6 @@ function renderDetailTable(rows) {
         { key: 'created_at',        label: 'Created' },
         { key: 'due_date',          label: 'Due Date' },
         { key: 'sla_hr',            label: 'SLA (Hr)',        tip: TAT_TIPS.sla_hr },
-        { key: 'response_tat_hr',   label: 'Resp TAT (Hr)',   tip: TAT_TIPS.response_tat_hr },
         { key: 'completion_tat_hr', label: 'Comp TAT (Hr)',   tip: TAT_TIPS.completion_tat_hr },
         { key: 'closure_tat_hr',    label: 'Clos TAT (Hr)',   tip: TAT_TIPS.closure_tat_hr },
         { key: 'days_overdue',      label: 'Days Overdue',
@@ -1533,7 +1532,6 @@ function renderDetailTable(rows) {
                 <td class="date-cell">${r.created_at}</td>
                 <td class="date-cell">${r.due_date}</td>
                 <td class="num">${fmtHr(r.sla_hr)}</td>
-                <td class="num">${fmtHr(r.response_tat_hr)}</td>
                 <td class="num">${fmtHr(r.completion_tat_hr)}</td>
                 <td class="num">${fmtHr(r.closure_tat_hr)}</td>
                 <td class="num">${daysOd}</td>
@@ -1544,7 +1542,7 @@ function renderDetailTable(rows) {
                 <td style="text-align:center">${actBtn}</td>
             </tr>`;
         }).join('')
-        : '<tr><td colspan="20" class="empty-state">No tickets match current filters</td></tr>';
+        : '<tr><td colspan="19" class="empty-state">No tickets match current filters</td></tr>';
 
     document.getElementById('detail-table').innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
     renderPagination('detail-pagination', totalPages, detailPage, 'setDetailPage', total);
@@ -1713,7 +1711,6 @@ function renderAssigneeTable(rows) {
         { key: 'tickets',     label: 'Tickets' },
         { key: 'breakdown',   label: 'Status Breakdown',
           tip: 'Count of claimed tickets by current status.\nOpen | In Progress | On Hold | Completed | Closed | Rejected' },
-        { key: 'avg_resp',    label: 'Avg Resp TAT (Hr)',  tip: TAT_TIPS.response_tat_hr },
         { key: 'avg_comp',    label: 'Avg Comp TAT (Hr)',  tip: TAT_TIPS.completion_tat_hr },
         { key: 'esc_rate',    label: 'Escalation Rate',
           tip: 'Percentage of this person\'s assigned tickets that were escalated.\nFormula: Escalated count ÷ Total tickets × 100' },
@@ -1752,12 +1749,11 @@ function renderAssigneeTable(rows) {
             <td>${r.name}</td>
             <td class="num"><strong>${r.tickets}</strong></td>
             ${bkCell(r)}
-            <td class="num">${r.avg_resp !== null ? r.avg_resp.toFixed(1) : '—'}</td>
             <td class="num">${r.avg_comp !== null ? r.avg_comp.toFixed(1) : '—'}</td>
             <td class="num">${r.esc_rate.toFixed(1)}%</td>
             <td class="num">${r.reopen_rate.toFixed(1)}%</td>
         </tr>`).join('')
-        : '<tr><td colspan="7" class="empty-state">No data for current filters</td></tr>';
+        : '<tr><td colspan="6" class="empty-state">No data for current filters</td></tr>';
 
     document.getElementById('assignee-table').innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
     renderPagination('assignee-pagination', totalPages, assigneePage, 'setAssigneePage', total);
