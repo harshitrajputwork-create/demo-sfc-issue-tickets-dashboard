@@ -123,15 +123,20 @@ def authenticate():
     return data["token"], data["userId"]
 
 
-def _month_ranges(start_dt, end_dt):
-    """Yield (range_start, range_end) tuples, one per calendar month, covering
-    [start_dt, end_dt]. Keeps each API request scoped to a single month so it
-    stays under the platform's 3000-record cap per request."""
+FETCH_CHUNK_MONTHS = 2   # months per API request — observed volume (~900/mo peak)
+                         # keeps 2-month windows comfortably under the 3000 cap
+
+
+def _month_ranges(start_dt, end_dt, chunk_months=FETCH_CHUNK_MONTHS):
+    """Yield (range_start, range_end) tuples, each spanning `chunk_months`
+    calendar months, covering [start_dt, end_dt]. Keeps each API request under
+    the platform's 3000-record cap per request while minimizing call count."""
     ranges = []
     cur = datetime(start_dt.year, start_dt.month, 1)
     while cur <= end_dt:
-        nxt = datetime(cur.year + 1, 1, 1) if cur.month == 12 \
-            else datetime(cur.year, cur.month + 1, 1)
+        y, m = cur.year, cur.month + chunk_months
+        y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+        nxt = datetime(y, m, 1)
         ranges.append((max(cur, start_dt), min(nxt, end_dt)))
         cur = nxt
     return ranges
@@ -186,7 +191,7 @@ def fetch_source_dataframe():
     frames = []
     for range_start, range_to in _month_ranges(FETCH_START_DATE, NOW_UTC):
         df_part = _fetch_range(headers, range_start, range_to)
-        print(f"  {range_start:%b %Y}: {len(df_part)} records")
+        print(f"  {range_start:%b %Y} - {range_to:%b %Y}: {len(df_part)} records")
         if len(df_part):
             frames.append(df_part)
 
