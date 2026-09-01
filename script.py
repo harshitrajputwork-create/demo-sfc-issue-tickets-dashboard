@@ -96,6 +96,10 @@ def resolve_output_path():
 
 
 # -- Data Fetching -- Pattern C -----------------------------------------------
+FETCH_START_DATE = datetime(2026, 1, 1)   # earliest data month for this tenant
+MAX_RECORDS_HINT = 3000                    # API hard cap per request (see _fetch_range)
+
+
 def authenticate():
     email    = os.environ.get("TAQTICS_EMAIL")
     password = os.environ.get("TAQTICS_PASSWORD")
@@ -119,22 +123,30 @@ def authenticate():
     return data["token"], data["userId"]
 
 
-def fetch_source_dataframe():
-    token, user_id = authenticate()
-    headers = {
-        "access-token": token,
-        "userId":       user_id,
-        "subdomain":    SUBDOMAIN,
-        "timeZone":     "Asia/Dubai",
-        "workspace":    SUBDOMAIN,
-        "Content-Type": "application/json",
-    }
+def _month_ranges(start_dt, end_dt):
+    """Yield (range_start, range_end) tuples, one per calendar month, covering
+    [start_dt, end_dt]. Keeps each API request scoped to a single month so it
+    stays under the platform's 3000-record cap per request."""
+    ranges = []
+    cur = datetime(start_dt.year, start_dt.month, 1)
+    while cur <= end_dt:
+        nxt = datetime(cur.year + 1, 1, 1) if cur.month == 12 \
+            else datetime(cur.year, cur.month + 1, 1)
+        ranges.append((max(cur, start_dt), min(nxt, end_dt)))
+        cur = nxt
+    return ranges
+
+
+def _fetch_range(headers, range_start, range_to):
+    """Fetch one date range. If the API rejects it as too large (platform caps
+    responses at ~3000 records), split the range in half and retry each half —
+    this self-corrects even if a single month ever exceeds the cap."""
     body = {
         "status":          "total",
         "tenantRole":      "Admin",
         "dateRange":       {
-            "from": "2026-01-01T00:00:00Z",
-            "to":   NOW_UTC.strftime("%Y-%m-%dT%H:%M:%SZ"),   # API expects UTC
+            "from": range_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "to":   range_to.strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         "filter":          False,
         "selectedFilters": {},
@@ -145,8 +157,42 @@ def fetch_source_dataframe():
         headers=headers,
         timeout=120,
     )
+    if resp.status_code == 400 and "too much data" in resp.text.lower():
+        span = range_to - range_start
+        if span <= timedelta(days=1):
+            resp.raise_for_status()   # can't split further — surface the real error
+        mid = range_start + span / 2
+        print(f"  Range {range_start:%Y-%m-%d}..{range_to:%Y-%m-%d} too large, "
+              f"splitting at {mid:%Y-%m-%d}")
+        left  = _fetch_range(headers, range_start, mid)
+        right = _fetch_range(headers, mid, range_to)
+        return pd.concat([left, right], ignore_index=True)
+
     resp.raise_for_status()
-    df = pd.read_csv(io.StringIO(resp.text))
+    return pd.read_csv(io.StringIO(resp.text))
+
+
+def fetch_source_dataframe():
+    token, user_id = authenticate()
+    headers = {
+        "access-token": token,
+        "userId":       user_id,
+        "subdomain":    SUBDOMAIN,
+        "timeZone":     "Asia/Dubai",
+        "workspace":    SUBDOMAIN,
+        "Content-Type": "application/json",
+    }
+
+    frames = []
+    for range_start, range_to in _month_ranges(FETCH_START_DATE, NOW_UTC):
+        df_part = _fetch_range(headers, range_start, range_to)
+        print(f"  {range_start:%b %Y}: {len(df_part)} records")
+        if len(df_part):
+            frames.append(df_part)
+
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if "Ticket Id" in df.columns:
+        df = df.drop_duplicates(subset="Ticket Id", keep="first")
     print(f"Fetched {len(df)} ticket records")
     return df
 
